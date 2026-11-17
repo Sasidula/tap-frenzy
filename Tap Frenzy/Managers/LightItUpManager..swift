@@ -6,7 +6,18 @@
 //
 
 
+
 import SwiftUI
+import Combine
+
+// MARK: - Tap Feedback
+
+enum LightTapFeedback {
+    case correct
+    case incorrect
+}
+
+// MARK: - Light It Up Manager
 
 @MainActor
 final class LightItUpManager: ObservableObject {
@@ -14,22 +25,22 @@ final class LightItUpManager: ObservableObject {
     // MARK: - Published Game State
 
     @Published private(set) var cards: [Card] = []
-
     @Published private(set) var score = 0
-
     @Published private(set) var lives = 3
-
     @Published private(set) var timeRemaining = 60
-
     @Published private(set) var elapsedTime = 0
 
     @Published private(set) var currentLevel: LightLevel = .beginner
 
     @Published private(set) var gameOver = false
-
     @Published private(set) var isPlaying = false
 
-    // MARK: - Saved High Score
+    @Published private(set) var tapFeedback: LightTapFeedback?
+    @Published private(set) var feedbackToken = UUID()
+
+    @Published private(set) var levelUpMessage: String?
+
+    // MARK: - High Score
 
     @AppStorage("lightItUpHighScore")
     private var savedHighScore = 0
@@ -38,15 +49,20 @@ final class LightItUpManager: ObservableObject {
         savedHighScore
     }
 
-    // MARK: - Timer Task
+    // MARK: - Tasks
 
     private var gameTask: Task<Void, Never>?
-
     private var activeCardTask: Task<Void, Never>?
+    private var feedbackTask: Task<Void, Never>?
+    private var levelTask: Task<Void, Never>?
 
-    // MARK: - Round Settings
+    // MARK: - Settings
 
     private let roundDuration = 60
+    private let wrongTapCooldown: TimeInterval = 0.75
+
+    private var lastWrongTapDate: Date?
+    private var activeEventID: UUID?
 
     // MARK: - Initialization
 
@@ -62,6 +78,7 @@ final class LightItUpManager: ObservableObject {
 
         score = 0
         lives = 3
+
         timeRemaining = roundDuration
         elapsedTime = 0
 
@@ -70,9 +87,19 @@ final class LightItUpManager: ObservableObject {
         gameOver = false
         isPlaying = true
 
-        resetCards()
+        tapFeedback = nil
+        levelUpMessage = nil
 
+        lastWrongTapDate = nil
+
+        resetCards()
         lightRandomCards()
+        startGameTimer()
+    }
+
+    // MARK: - Game Timer
+
+    private func startGameTimer() {
 
         gameTask = Task { [weak self] in
 
@@ -116,7 +143,7 @@ final class LightItUpManager: ObservableObject {
         }
     }
 
-    // MARK: - Update Level
+    // MARK: - Level Progression
 
     private func updateLevel() {
 
@@ -143,11 +170,43 @@ final class LightItUpManager: ObservableObject {
 
         currentLevel = newLevel
 
+        // Cancel the previous lighting event.
+        cancelLightingEvent()
+
+        // Generate cards for the new level.
         resetCards()
 
-        activeCardTask?.cancel()
+        // Display level-up message.
+        showLevelUp()
 
+        // Start a new lighting event.
         lightRandomCards()
+    }
+
+    // MARK: - Level-Up Feedback
+
+    private func showLevelUp() {
+
+        levelTask?.cancel()
+
+        levelUpMessage = "LEVEL \(currentLevel.rawValue)!"
+
+        levelTask = Task { [weak self] in
+
+            do {
+                try await Task.sleep(
+                    nanoseconds: 1_500_000_000
+                )
+            } catch {
+                return
+            }
+
+            guard !Task.isCancelled else {
+                return
+            }
+
+            self?.levelUpMessage = nil
+        }
     }
 
     // MARK: - Random Card Lighting
@@ -158,7 +217,7 @@ final class LightItUpManager: ObservableObject {
             return
         }
 
-        activeCardTask?.cancel()
+        cancelLightingEvent()
 
         let availableIDs = cards.map { $0.id }
 
@@ -183,6 +242,9 @@ final class LightItUpManager: ObservableObject {
         }
 
         let duration = currentLevel.litDuration
+        let eventID = UUID()
+
+        activeEventID = eventID
 
         activeCardTask = Task { [weak self] in
 
@@ -196,7 +258,9 @@ final class LightItUpManager: ObservableObject {
                 return
             }
 
-            guard let self, self.isPlaying else {
+            guard let self,
+                  self.isPlaying,
+                  self.activeEventID == eventID else {
                 return
             }
 
@@ -218,26 +282,71 @@ final class LightItUpManager: ObservableObject {
             return
         }
 
+        // Incorrect tap
         guard cards[index].isLit else {
 
-            loseLife()
-
+            handleWrongTap()
             return
         }
 
         // Correct tap
         score += 1
 
+        showTapFeedback(.correct)
+
         cards[index].isLit = false
 
-        // Level 4 can have two active cards.
-        // Continue only when all active cards are cleared.
+        // Continue only when all illuminated cards
+        // have been successfully tapped.
 
         if !cards.contains(where: { $0.isLit }) {
 
-            activeCardTask?.cancel()
+            cancelLightingEvent()
 
             lightRandomCards()
+        }
+    }
+
+    // MARK: - Wrong Tap
+
+    private func handleWrongTap() {
+
+        showTapFeedback(.incorrect)
+
+        let now = Date()
+
+        // Prevent repeated penalties from rapid tapping.
+        if let lastWrongTapDate,
+           now.timeIntervalSince(lastWrongTapDate)
+                < wrongTapCooldown {
+            return
+        }
+
+        lastWrongTapDate = now
+
+        loseLife()
+    }
+
+    // MARK: - Tap Feedback
+
+    private func showTapFeedback(_ feedback: LightTapFeedback) {
+
+        feedbackTask?.cancel()
+
+        tapFeedback = feedback
+        feedbackToken = UUID()
+
+        feedbackTask = Task { [weak self] in
+
+            do {
+                try await Task.sleep(
+                    nanoseconds: 450_000_000
+                )
+            } catch {
+                return
+            }
+
+            self?.tapFeedback = nil
         }
     }
 
@@ -258,14 +367,12 @@ final class LightItUpManager: ObservableObject {
             return
         }
 
+        // One life penalty for one expired event.
         loseLife()
 
         guard isPlaying else {
             return
         }
-
-        // One penalty per expired lighting event,
-        // even if two cards were illuminated.
 
         lightRandomCards()
     }
@@ -278,14 +385,21 @@ final class LightItUpManager: ObservableObject {
             return
         }
 
-        lives -= 1
+        lives = max(0, lives - 1)
 
-        if lives <= 0 {
-
-            lives = 0
-
+        if lives == 0 {
             finishGame()
         }
+    }
+
+    // MARK: - Cancel Lighting Event
+
+    private func cancelLightingEvent() {
+
+        activeCardTask?.cancel()
+        activeCardTask = nil
+
+        activeEventID = nil
     }
 
     // MARK: - Finish Game
@@ -298,6 +412,11 @@ final class LightItUpManager: ObservableObject {
 
         isPlaying = false
         gameOver = true
+
+        // Remove all illuminated cards.
+        for index in cards.indices {
+            cards[index].isLit = false
+        }
 
         stopTimers()
 
@@ -313,20 +432,22 @@ final class LightItUpManager: ObservableObject {
         gameTask?.cancel()
         gameTask = nil
 
-        activeCardTask?.cancel()
-        activeCardTask = nil
+        cancelLightingEvent()
+
+        feedbackTask?.cancel()
+        feedbackTask = nil
+
+        levelTask?.cancel()
+        levelTask = nil
     }
 
     // MARK: - Restart Game
 
     func restartGame() {
-
-        stopTimers()
-
         startGame()
     }
 
-    // MARK: - Return to Idle
+    // MARK: - Stop Game
 
     func stopGame() {
 
@@ -334,5 +455,8 @@ final class LightItUpManager: ObservableObject {
 
         isPlaying = false
         gameOver = false
+
+        tapFeedback = nil
+        levelUpMessage = nil
     }
 }

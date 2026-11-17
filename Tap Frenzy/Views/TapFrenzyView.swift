@@ -9,6 +9,8 @@
 import SwiftUI
 
 struct TapFrenzyView: View {
+    
+    @Environment(\.dismiss) private var dismiss
 
     // MARK: - Game Manager
 
@@ -92,34 +94,66 @@ struct TapFrenzyView: View {
             // Game over popup
             if game.gamePhase == .over {
 
-                GameOverPopup(game: game)
+                GameOverPopup(game: game) {
+                    dismiss()
+                }
             }
         }
     }
 
+    
     // MARK: - Game Title
 
     private var gameTitle: some View {
 
         VStack(spacing: 5) {
 
-            Text("TAP FRENZY")
-                .font(.system(
-                    size: 34,
-                    weight: .black,
-                    design: .rounded
-                ))
-                .foregroundColor(pink)
-                .shadow(color: pink.opacity(0.8), radius: 15)
+            HStack {
 
-            Text("NEON CHALLENGE")
-                .font(.system(
-                    size: 11,
-                    weight: .bold,
-                    design: .monospaced
-                ))
-                .tracking(4)
-                .foregroundColor(.white.opacity(0.6))
+                // Back to Home
+                Button {
+                    dismiss()
+                } label: {
+
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 42, height: 42)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Circle())
+                }
+
+                Spacer()
+
+                VStack(spacing: 5) {
+
+                    Text("TAP FRENZY")
+                        .font(.system(
+                            size: 30,
+                            weight: .black,
+                            design: .rounded
+                        ))
+                        .foregroundColor(pink)
+                        .shadow(color: pink.opacity(0.8), radius: 15)
+
+                    Text("NEON CHALLENGE")
+                        .font(.system(
+                            size: 10,
+                            weight: .bold,
+                            design: .monospaced
+                        ))
+                        .tracking(3)
+                        .foregroundColor(.white.opacity(0.6))
+                }
+
+                Spacer()
+
+                // Balance the back button
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 17))
+                    .foregroundColor(.clear)
+                    .frame(width: 42, height: 42)
+            }
         }
     }
 

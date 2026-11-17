@@ -11,6 +11,8 @@ import SwiftUI
 struct GameOverPopup: View {
 
     @ObservedObject var game: GameManager
+    
+    var onReturnHome: () -> Void
 
     private let pink = Color(
         red: 1.0,
@@ -59,6 +61,7 @@ struct GameOverPopup: View {
                         .foregroundColor(pink)
                 }
 
+                // Retry
                 Button {
                     game.resetGame()
                 } label: {
@@ -76,6 +79,27 @@ struct GameOverPopup: View {
                         .shadow(color: pink.opacity(0.6), radius: 12)
                 }
                 .buttonStyle(.plain)
+                
+                
+                // Return Home
+                Button {
+                    onReturnHome()
+                } label: {
+
+                    HStack(spacing: 8) {
+
+                        Image(systemName: "house.fill")
+
+                        Text("RETURN HOME")
+                            .tracking(2)
+                    }
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white.opacity(0.75))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
+
             }
             .padding(30)
             .frame(maxWidth: 320)

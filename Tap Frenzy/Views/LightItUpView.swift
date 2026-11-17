@@ -31,6 +31,7 @@ struct LightItUpView: View {
         green: 0.85,
         blue: 1.0
     )
+    
 
     // MARK: - Grid Layout
 
@@ -44,8 +45,6 @@ struct LightItUpView: View {
             count: manager.currentLevel.columnCount
         )
     }
-
-    // MARK: - Body
 
     var body: some View {
 
@@ -61,39 +60,65 @@ struct LightItUpView: View {
 
             VStack(spacing: 22) {
 
-                // Header
+                // Header (always visible)
                 headerSection
 
-                // Score and lives
+                // Statistics (always visible)
                 statisticsSection
 
-                // Timer
-                timerSection
+                if manager.isPlaying {
 
-                // Level information
-                levelSection
+                    // Timer
+                    timerSection
 
-                Spacer(minLength: 5)
+                    // Level information
+                    levelSection
 
-                // Interactive cards
-                cardGrid
+                    Spacer(minLength: 5)
 
-                Spacer(minLength: 5)
+                    // Interactive cards
+                    cardGrid
 
-                // Game instructions
-                instructionSection
+                    Spacer(minLength: 5)
+
+                    // Instructions
+                    instructionSection
+
+                } else {
+
+                    // Welcome screen occupies card area
+                    Spacer(minLength: 5)
+
+                    startOverlay
+
+                    Spacer(minLength: 5)
+                }
             }
             .padding(.horizontal, 22)
             .padding(.vertical, 15)
 
-            // Start screen
-            if !manager.isPlaying && !manager.gameOver {
-                startOverlay
-            }
-
             // Game over screen
             if manager.gameOver {
                 gameOverOverlay
+                    .zIndex(5)
+            }
+
+            // Tap feedback
+            if manager.isPlaying,
+               let feedback = manager.tapFeedback {
+
+                feedbackBanner(feedback)
+                    .transition(.scale.combined(with: .opacity))
+                    .zIndex(2)
+            }
+
+            // Level up animation
+            if manager.isPlaying,
+               let message = manager.levelUpMessage {
+
+                levelUpBanner(message)
+                    .transition(.scale.combined(with: .opacity))
+                    .zIndex(3)
             }
         }
         .preferredColorScheme(.dark)
@@ -101,8 +126,20 @@ struct LightItUpView: View {
         .onDisappear {
             manager.stopGame()
         }
+        .animation(
+            .spring(response: 0.4, dampingFraction: 0.8),
+            value: manager.isPlaying
+        )
+        .animation(
+            .spring(response: 0.35, dampingFraction: 0.7),
+            value: manager.feedbackToken
+        )
+        .animation(
+            .spring(response: 0.4, dampingFraction: 0.7),
+            value: manager.levelUpMessage
+        )
     }
-
+    
     // MARK: - Header
 
     private var headerSection: some View {
@@ -363,81 +400,78 @@ struct LightItUpView: View {
         .padding(.vertical, 12)
     }
 
-    // MARK: - Start Overlay
+    // MARK: - Start Panel
 
     private var startOverlay: some View {
 
-        ZStack {
+        VStack(spacing: 23) {
 
-            Color.black.opacity(0.88)
-                .ignoresSafeArea()
+            Image(systemName: "lightbulb.fill")
+                .font(.system(size: 65))
+                .foregroundColor(cyan)
+                .shadow(color: cyan.opacity(0.8), radius: 25)
 
-            VStack(spacing: 23) {
+            Text("LIGHT IT UP")
+                .font(.system(
+                    size: 30,
+                    weight: .black,
+                    design: .rounded
+                ))
+                .foregroundColor(cyan)
 
-                Image(systemName: "lightbulb.fill")
-                    .font(.system(size: 65))
-                    .foregroundColor(cyan)
-                    .shadow(color: cyan.opacity(0.8), radius: 25)
+            Text("TEST YOUR REACTION SPEED")
+                .font(.system(size: 10, weight: .bold))
+                .tracking(2)
+                .foregroundColor(.white.opacity(0.6))
 
-                Text("LIGHT IT UP")
-                    .font(.system(
-                        size: 30,
-                        weight: .black,
-                        design: .rounded
-                    ))
-                    .foregroundColor(cyan)
+            VStack(spacing: 12) {
 
-                Text("TEST YOUR REACTION SPEED")
-                    .font(.system(size: 10, weight: .bold))
-                    .tracking(2)
-                    .foregroundColor(.white.opacity(0.6))
+                instructionRow(
+                    icon: "lightbulb.fill",
+                    text: "Tap illuminated cards"
+                )
 
-                VStack(spacing: 12) {
+                instructionRow(
+                    icon: "heart.fill",
+                    text: "You have 3 lives"
+                )
 
-                    instructionRow(
-                        icon: "lightbulb.fill",
-                        text: "Tap illuminated cards"
-                    )
-
-                    instructionRow(
-                        icon: "heart.fill",
-                        text: "You have 3 lives"
-                    )
-
-                    instructionRow(
-                        icon: "clock.fill",
-                        text: "Survive for 60 seconds"
-                    )
-                }
-                .padding(.vertical, 10)
-
-                Button {
-                    manager.startGame()
-                } label: {
-
-                    HStack(spacing: 10) {
-
-                        Image(systemName: "play.fill")
-
-                        Text("START GAME")
-                            .tracking(2)
-                    }
-                    .font(.system(size: 14, weight: .black))
-                    .foregroundColor(.black)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 17)
-                    .background(cyan)
-                    .clipShape(RoundedRectangle(cornerRadius: 15))
-                    .shadow(color: cyan.opacity(0.5), radius: 15)
-                }
-                .buttonStyle(.plain)
+                instructionRow(
+                    icon: "clock.fill",
+                    text: "Survive for 60 seconds"
+                )
             }
-            .padding(28)
-            .frame(maxWidth: 340)
-            .modifier(NeonGlassPanel())
-        }
-    }
+            .padding(.vertical, 10)
 
+            Button {
+                withAnimation(.spring(response: 0.4)) {
+                    manager.startGame()
+                }
+            } label: {
+
+                HStack(spacing: 10) {
+
+                    Image(systemName: "play.fill")
+
+                    Text("START GAME")
+                        .tracking(2)
+                }
+                .font(.system(size: 14, weight: .black))
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 17)
+                .background(cyan)
+                .clipShape(RoundedRectangle(cornerRadius: 15))
+                .shadow(color: cyan.opacity(0.5), radius: 15)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(28)
+        .frame(maxWidth: 340)
+        .modifier(NeonGlassPanel())
+    }
+    
+    
     // MARK: - Instruction Row
 
     private func instructionRow(
@@ -555,6 +589,104 @@ struct LightItUpView: View {
         }
         .transition(.opacity.combined(with: .scale))
     }
+    
+    
+    // MARK: - Tap Feedback Banner
+
+    private func feedbackBanner(
+        _ feedback: LightTapFeedback
+    ) -> some View {
+
+        let isCorrect = feedback == .correct
+
+        let color = isCorrect ? cyan : pink
+
+        return VStack {
+
+            Spacer()
+
+            HStack(spacing: 12) {
+
+                Image(
+                    systemName: isCorrect
+                    ? "checkmark.circle.fill"
+                    : "xmark.circle.fill"
+                )
+                .font(.system(size: 24))
+
+                Text(
+                    isCorrect
+                    ? "+1 POINT!"
+                    : "WRONG CARD!"
+                )
+                .font(.system(size: 15, weight: .black))
+                .tracking(2)
+            }
+            .foregroundColor(color)
+            .padding(.horizontal, 25)
+            .padding(.vertical, 15)
+            .background(Color.black.opacity(0.9))
+            .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(color.opacity(0.8), lineWidth: 1.5)
+            )
+            .shadow(color: color.opacity(0.5), radius: 15)
+
+            Spacer()
+                .frame(height: 100)
+        }
+        .allowsHitTesting(false)
+    }
+
+    // MARK: - Level Up Banner
+
+    private func levelUpBanner(
+        _ message: String
+    ) -> some View {
+
+        VStack {
+
+            Spacer()
+
+            VStack(spacing: 12) {
+
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 35))
+                    .foregroundColor(.yellow)
+
+                Text(message)
+                    .font(.system(
+                        size: 28,
+                        weight: .black,
+                        design: .rounded
+                    ))
+                    .foregroundColor(.white)
+
+                Text("DIFFICULTY INCREASED!")
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(3)
+                    .foregroundColor(.white.opacity(0.65))
+            }
+            .padding(30)
+            .background(Color.black.opacity(0.95))
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(
+                        manager.currentLevel.color,
+                        lineWidth: 2
+                    )
+            )
+            .shadow(
+                color: manager.currentLevel.color.opacity(0.6),
+                radius: 25
+            )
+
+            Spacer()
+        }
+        .allowsHitTesting(false)
+    }
 }
 
 // MARK: - Preview
@@ -564,3 +696,4 @@ struct LightItUpView: View {
         LightItUpView()
     }
 }
+
